@@ -6,7 +6,7 @@
     <title>Grand Luxury Carousel</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; background: #050300; font-family: serif; overflow: hidden; }
+        body { margin: 0; background: #050300; font-family: serif; overflow: hidden; color: white; }
         canvas { touch-action: none; width: 100%; height: 100vh; }
         #loader {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -16,45 +16,41 @@
         }
         .spinner { width: 50px; height: 50px; border: 3px solid rgba(212, 175, 55, 0.1); border-top-color: #D4AF37; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        #error-log {
+            position: fixed; bottom: 10px; left: 10px; color: red; font-size: 10px; 
+            z-index: 200; max-width: 80%; word-break: break-all; pointer-events: none;
+        }
     </style>
 </head>
 <body>
     <div id="loader">
         <div class="spinner"></div>
-        <p style="margin-top: 25px; letter-spacing: 0.5em; font-size: 12px;">INITIALIZING SCENE...</p>
+        <p style="margin-top: 25px; letter-spacing: 0.5em; font-size: 10px;">LOADING 3D ENGINE...</p>
     </div>
+    <div id="error-log"></div>
     <div id="root"></div>
 
-    <script type="importmap">
-      {
-        "imports": {
-          "react": "https://unpkg.com/react@18/umd/react.production.min.js",
-          "react-dom": "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js",
-          "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-          "@react-three/fiber": "https://unpkg.com/@react-three/fiber@8.17.10/dist/react-three-fiber.esm.js",
-          "@react-three/drei": "https://unpkg.com/@react-three/drei@9.120.0/dist/index.js"
-        }
-      }
-    </script>
-
-    <!-- 兼容性处理：如果 importmap 失败，提供备用方案 -->
     <script type="module">
-        import React, { useState, useRef, useMemo, useEffect, Suspense } from 'https://esm.sh/react@18.3.1';
-        import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
-        import * as THREE from 'https://esm.sh/three@0.170.0';
-        import { Canvas, useFrame } from 'https://esm.sh/@react-three/fiber@8.17.10?external=react,three';
-        import { Float, Environment, Text, OrbitControls, MeshWobbleMaterial } from 'https://esm.sh/@react-three/drei@9.120.0?external=react,three';
+        // 错误捕获：如果脚本崩溃，在屏幕上显示错误
+        window.onerror = function(msg, url, line) {
+            document.getElementById('error-log').innerText = "Error: " + msg + "\nLine: " + line;
+        };
+
+        // 直接从 esm.sh 导入，不依赖 importmap，增加稳定性
+        import React, { useState, useRef, useMemo, useEffect, Suspense } from 'https://esm.sh/react@18.2.0';
+        import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+        import * as THREE from 'https://esm.sh/three@0.160.0';
+        import { Canvas, useFrame } from 'https://esm.sh/@react-three/fiber@8.15.11?external=react,three';
+        import { Float, Environment, Text, OrbitControls, MeshWobbleMaterial } from 'https://esm.sh/@react-three/drei@9.88.11?external=react,three';
 
         const STATE = { CHAOS: 'CHAOS', FORMED: 'FORMED' };
-        const INSTANCE_COUNT = 50; 
-        const POLAROID_COUNT = 10;
 
         const CarouselElements = ({ state }) => {
             const meshRef = useRef();
             const temp = new THREE.Object3D();
-            const data = useMemo(() => Array.from({ length: INSTANCE_COUNT }).map((_, i) => ({
-                chaos: new THREE.Vector3((Math.random()-0.5)*35, (Math.random()-0.5)*35, (Math.random()-0.5)*35),
-                angle: (i / INSTANCE_COUNT) * Math.PI * 2,
+            const data = useMemo(() => Array.from({ length: 40 }).map((_, i) => ({
+                chaos: new THREE.Vector3((Math.random()-0.5)*30, (Math.random()-0.5)*30, (Math.random()-0.5)*30),
+                angle: (i / 40) * Math.PI * 2,
                 radius: 7 + Math.sin(i) * 2,
                 y: (Math.random()-0.5) * 6
             })), []);
@@ -75,28 +71,9 @@
                 });
                 meshRef.current.instanceMatrix.needsUpdate = true;
             });
-            return React.createElement('instancedMesh', { ref: meshRef, args: [null, null, INSTANCE_COUNT] }, [
+            return React.createElement('instancedMesh', { ref: meshRef, args: [null, null, 40] }, [
                 React.createElement('boxGeometry', { args: [0.4, 0.8, 0.4] }),
                 React.createElement('meshStandardMaterial', { color: "#D4AF37", metalness: 0.9, roughness: 0.1 })
-            ]);
-        };
-
-        const Polaroid = ({ index, total, state }) => {
-            const ref = useRef();
-            const cPos = useMemo(() => new THREE.Vector3((Math.random()-0.5)*30, (Math.random()-0.5)*30, (Math.random()-0.5)*30), []);
-            useFrame((s) => {
-                const isChaos = state === STATE.CHAOS;
-                const a = (index/total)*Math.PI*2 + s.clock.elapsedTime*0.15;
-                const target = isChaos ? cPos : new THREE.Vector3(Math.cos(a)*11, 2, Math.sin(a)*11);
-                ref.current.position.lerp(target, 0.05);
-                if(!isChaos) ref.current.lookAt(0,2,0);
-            });
-            return React.createElement('group', { ref: ref }, [
-                React.createElement('mesh', null, [
-                    React.createElement('planeGeometry', { args: [2, 2.5] }),
-                    React.createElement('meshStandardMaterial', { color: "white" })
-                ]),
-                React.createElement(Text, { position: [0, -0.9, 0.02], fontSize: 0.12, color: "black" }, "ERA")
             ]);
         };
 
@@ -105,7 +82,7 @@
             
             useEffect(() => {
                 const loader = document.getElementById('loader');
-                // 强制在3秒后隐藏加载动画，防止死锁
+                // 3秒后无论如何关闭加载动画
                 const timer = setTimeout(() => {
                     if (loader) {
                         loader.style.opacity = '0';
@@ -116,44 +93,37 @@
             }, []);
 
             return React.createElement('div', { className: "w-full h-screen relative" }, [
-                React.createElement(Canvas, { shadows: true, camera: { position: [0, 5, 25], fov: 45 } }, [
+                React.createElement(Canvas, { camera: { position: [0, 5, 25], fov: 45 } }, [
                     React.createElement(Suspense, { fallback: null }, [
                         React.createElement(Environment, { preset: "city" }),
-                        React.createElement(Float, { speed: 2 }, React.createElement('mesh', null, [
-                            React.createElement('sphereGeometry', { args: [2, 32, 32] }),
-                            React.createElement(MeshWobbleMaterial, { factor: 0.4, speed: 1.5, color: "#FFD700", emissive: "#FF4500", emissiveIntensity: 0.5 })
-                        ])),
-                        React.createElement(CarouselElements, { state: appState }),
-                        ...Array.from({ length: POLAROID_COUNT }).map((_, i) => 
-                            React.createElement(Polaroid, { key: i, index: i, total: POLAROID_COUNT, state: appState })
+                        React.createElement(Float, { speed: 2 }, 
+                            React.createElement('mesh', null, [
+                                React.createElement('sphereGeometry', { args: [2, 32, 32] }),
+                                React.createElement(MeshWobbleMaterial, { factor: 0.4, speed: 1.5, color: "#FFD700", emissive: "#FF4500", emissiveIntensity: 0.5 })
+                            ])
                         ),
+                        React.createElement(CarouselElements, { state: appState }),
                         React.createElement(OrbitControls, { enablePan: false })
                     ]),
                     React.createElement('ambientLight', { intensity: 0.5 }),
                     React.createElement('pointLight', { position: [10, 10, 10], intensity: 1 })
                 ]),
                 
-                // 控制 UI
+                // 控制按钮
                 React.createElement('div', { className: "fixed bottom-10 left-1/2 -translate-x-1/2 z-50 flex gap-4" }, [
                     React.createElement('button', {
                         onClick: () => setAppState(STATE.CHAOS),
-                        className: `px-8 py-3 rounded-full border border-yellow-500/50 text-white text-xs tracking-widest uppercase transition-all ${appState === STATE.CHAOS ? 'bg-red-600 border-transparent shadow-lg' : 'bg-black/50 backdrop-blur-md'}`
+                        className: `px-6 py-2 rounded-full border border-yellow-500/50 text-white text-[10px] uppercase tracking-widest ${appState === STATE.CHAOS ? 'bg-red-600' : 'bg-black/50'}`
                     }, "Unleash Chaos"),
                     React.createElement('button', {
                         onClick: () => setAppState(STATE.FORMED),
-                        className: `px-8 py-3 rounded-full border border-yellow-500/50 text-white text-xs tracking-widest uppercase transition-all ${appState === STATE.FORMED ? 'bg-yellow-600 text-black border-transparent shadow-lg' : 'bg-black/50 backdrop-blur-md'}`
+                        className: `px-6 py-2 rounded-full border border-yellow-500/50 text-white text-[10px] uppercase tracking-widest ${appState === STATE.FORMED ? 'bg-yellow-600 text-black' : 'bg-black/50'}`
                     }, "Restore Order")
-                ]),
-
-                React.createElement('div', { className: "absolute top-10 w-full text-center pointer-events-none" }, 
-                    React.createElement('h1', { className: "text-3xl md:text-5xl text-yellow-500 tracking-[0.4em] font-serif italic uppercase opacity-80" }, "Grand Carousel")
-                )
+                ])
             ]);
         }
 
-        const container = document.getElementById('root');
-        const root = createRoot(container);
-        root.render(React.createElement(App));
+        createRoot(document.getElementById('root')).render(React.createElement(App));
     </script>
 </body>
 </html>
