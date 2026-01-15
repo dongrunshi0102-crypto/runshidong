@@ -8,22 +8,33 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap');
         body { margin: 0; background: #050300; font-family: 'Playfair Display', serif; overflow: hidden; }
-        canvas { touch-action: none; }
+        canvas { touch-action: none; width: 100%; height: 100vh; }
+        #loader {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #050300; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+            color: #D4AF37; transition: opacity 0.5s ease;
+        }
+        .spinner { width: 40px; height: 40px; border: 2px solid #D4AF37; border-top-color: transparent; border-radius: 50%; animate: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+    <div id="loader">
+        <div class="spinner"></div>
+        <p style="margin-top: 20px; letter-spacing: 0.3em;">LOADING EXPERIENCE</p>
+    </div>
     <div id="root"></div>
 
-    <!-- 导入 React 和依赖库的 CDN 链接 -->
     <script type="importmap">
       {
         "imports": {
-          "react": "https://esm.sh/react@19?dev",
-          "react-dom": "https://esm.sh/react-dom@19?dev",
-          "react-dom/client": "https://esm.sh/react-dom@19/client?dev",
+          "react": "https://esm.sh/react@18.3.1",
+          "react-dom": "https://esm.sh/react-dom@18.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
           "three": "https://esm.sh/three@0.170.0",
-          "@react-three/fiber": "https://esm.sh/@react-three/fiber@9?external=react,react-dom,three",
-          "@react-three/drei": "https://esm.sh/@react-three/drei@9?external=react,react-dom,three"
+          "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.17.10?external=react,react-dom,three",
+          "@react-three/drei": "https://esm.sh/@react-three/drei@9.120.0?external=react,react-dom,three"
         }
       }
     </script>
@@ -36,146 +47,118 @@
         import { Float, Environment, Text, OrbitControls, PerspectiveCamera, MeshWobbleMaterial } from '@react-three/drei';
 
         const STATE = { CHAOS: 'CHAOS', FORMED: 'FORMED' };
-        const INSTANCE_COUNT = 80;
-        const POLAROID_COUNT = 15;
+        const INSTANCE_COUNT = 60; // 减少数量以提高初始化速度
+        const POLAROID_COUNT = 12;
 
-        // 手势控制器组件
         const GestureController = ({ onStateChange, currentState }) => {
             const videoRef = useRef(null);
-
             useEffect(() => {
-                async function setupCamera() {
-                    try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                        if (videoRef.current) videoRef.current.srcObject = stream;
-                    } catch (err) {
-                        console.warn("相机权限被拒绝，请在 HTTPS 环境下打开");
-                    }
-                }
-                setupCamera();
+                navigator.mediaDevices?.getUserMedia({ video: true })
+                    .then(stream => { if (videoRef.current) videoRef.current.srcObject = stream; })
+                    .catch(() => console.log("Camera access blocked."));
             }, []);
 
-            return React.createElement('div', { className: "fixed bottom-6 left-6 z-50 p-5 bg-black/80 backdrop-blur-2xl rounded-3xl border border-yellow-500/30 text-white shadow-2xl" }, [
-                React.createElement('div', { className: "flex items-center gap-3 mb-4", key: 'header' }, [
-                    React.createElement('div', { className: "w-2 h-2 rounded-full bg-yellow-500 animate-ping" }),
-                    React.createElement('h3', { className: "text-yellow-500 font-bold text-xs tracking-widest uppercase" }, "Vision AI System")
+            return React.createElement('div', { className: "fixed bottom-6 left-6 z-50 p-5 bg-black/80 backdrop-blur-xl rounded-3xl border border-yellow-500/30 text-white shadow-2xl" }, [
+                React.createElement('div', { className: "relative mb-4 overflow-hidden rounded-xl border border-white/5 bg-neutral-900", key: 'v' }, [
+                    React.createElement('video', { ref: videoRef, autoPlay: true, playsInline: true, muted: true, className: "w-40 h-28 object-cover grayscale brightness-50" })
                 ]),
-                React.createElement('div', { className: "relative mb-4 overflow-hidden rounded-xl border border-white/5 bg-neutral-900", key: 'video' }, [
-                    React.createElement('video', { ref: videoRef, autoPlay: true, playsInline: true, muted: true, className: "w-48 h-36 object-cover grayscale brightness-50" })
-                ]),
-                React.createElement('div', { className: "grid grid-cols-2 gap-3", key: 'buttons' }, [
+                React.createElement('div', { className: "flex gap-2", key: 'b' }, [
                     React.createElement('button', {
                         onClick: () => onStateChange(STATE.CHAOS),
-                        className: `py-3 rounded-xl text-[10px] uppercase ${currentState === STATE.CHAOS ? 'bg-red-500' : 'bg-white/5 border border-white/10'}`
-                    }, "🖐️ Unleash"),
+                        className: `px-4 py-2 rounded-lg text-[10px] uppercase tracking-widest ${currentState === STATE.CHAOS ? 'bg-red-600' : 'bg-white/10'}`
+                    }, "Unleash"),
                     React.createElement('button', {
                         onClick: () => onStateChange(STATE.FORMED),
-                        className: `py-3 rounded-xl text-[10px] uppercase ${currentState === STATE.FORMED ? 'bg-yellow-500 text-black' : 'bg-white/5 border border-white/10'}`
-                    }, "✊ Formed")
+                        className: `px-4 py-2 rounded-lg text-[10px] uppercase tracking-widest ${currentState === STATE.FORMED ? 'bg-yellow-600' : 'bg-white/10'}`
+                    }, "Form")
                 ])
             ]);
         };
 
-        // 3D 核心逻辑
         const CarouselElements = ({ state }) => {
             const meshRef = useRef();
-            const tempObject = new THREE.Object3D();
+            const temp = new THREE.Object3D();
             const data = useMemo(() => Array.from({ length: INSTANCE_COUNT }).map((_, i) => ({
-                chaosPos: new THREE.Vector3((Math.random() - 0.5) * 50, (Math.random() - 0.5) * 50, (Math.random() - 0.5) * 50),
-                angleOffset: (i / INSTANCE_COUNT) * Math.PI * 2,
-                heightOffset: (Math.random() - 0.5) * 10,
-                radiusOffset: 8 + Math.sin(i) * 2,
-                speed: 0.01 + Math.random() * 0.02
+                chaos: new THREE.Vector3((Math.random()-0.5)*40, (Math.random()-0.5)*40, (Math.random()-0.5)*40),
+                angle: (i / INSTANCE_COUNT) * Math.PI * 2,
+                radius: 8 + Math.sin(i) * 2,
+                y: (Math.random()-0.5) * 8
             })), []);
 
-            useFrame((stateFrame) => {
-                const time = stateFrame.clock.getElapsedTime();
+            useFrame((s) => {
                 const isChaos = state === STATE.CHAOS;
                 data.forEach((item, i) => {
-                    let targetX, targetY, targetZ, rotX = 0, rotY = 0, rotZ = 0;
                     if (isChaos) {
-                        targetX = item.chaosPos.x; targetY = item.chaosPos.y; targetZ = item.chaosPos.z;
-                        rotX = time * item.speed * 5; rotY = time * item.speed * 5;
+                        temp.position.lerp(item.chaos, 0.05);
+                        temp.rotation.x += 0.01;
                     } else {
-                        const angle = item.angleOffset + time * 0.4;
-                        targetX = Math.cos(angle) * item.radiusOffset;
-                        targetZ = Math.sin(angle) * item.radiusOffset;
-                        targetY = item.heightOffset + Math.sin(time + i) * 0.5;
-                        rotY = -angle + Math.PI / 2;
+                        const a = item.angle + s.clock.elapsedTime * 0.3;
+                        temp.position.lerp(new THREE.Vector3(Math.cos(a)*item.radius, item.y, Math.sin(a)*item.radius), 0.05);
+                        temp.rotation.set(0, -a + Math.PI/2, 0);
                     }
-                    tempObject.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.06);
-                    tempObject.rotation.set(rotX, rotY, rotZ);
-                    tempObject.updateMatrix();
-                    meshRef.current.setMatrixAt(i, tempObject.matrix);
+                    temp.updateMatrix();
+                    meshRef.current.setMatrixAt(i, temp.matrix);
                 });
                 meshRef.current.instanceMatrix.needsUpdate = true;
             });
-
             return React.createElement('instancedMesh', { ref: meshRef, args: [null, null, INSTANCE_COUNT] }, [
                 React.createElement('boxGeometry', { args: [0.4, 0.8, 0.4] }),
-                React.createElement('meshStandardMaterial', { color: "#D4AF37", metalness: 1, roughness: 0.1 })
+                React.createElement('meshStandardMaterial', { color: "#D4AF37", metalness: 0.9, roughness: 0.1 })
             ]);
         };
 
         const Polaroid = ({ index, total, state }) => {
             const ref = useRef();
-            const [chaosPos] = useState(() => new THREE.Vector3((Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40));
-            useFrame(({ clock }) => {
-                const time = clock.getElapsedTime();
+            const cPos = useMemo(() => new THREE.Vector3((Math.random()-0.5)*35, (Math.random()-0.5)*35, (Math.random()-0.5)*35), []);
+            useFrame((s) => {
                 const isChaos = state === STATE.CHAOS;
-                const angle = (index / total) * Math.PI * 2 + time * 0.25;
-                const targetPos = new THREE.Vector3(Math.cos(angle) * 14, Math.sin(index * 2 + time) * 2 + 3, Math.sin(angle) * 14);
-                ref.current.position.lerp(isChaos ? chaosPos : targetPos, 0.05);
-                if (!isChaos) ref.current.lookAt(0, 3, 0); else ref.current.rotation.z += 0.01;
+                const a = (index/total)*Math.PI*2 + s.clock.elapsedTime*0.2;
+                const target = isChaos ? cPos : new THREE.Vector3(Math.cos(a)*12, 2, Math.sin(a)*12);
+                ref.current.position.lerp(target, 0.05);
+                if(!isChaos) ref.current.lookAt(0,2,0);
             });
             return React.createElement('group', { ref: ref }, [
                 React.createElement('mesh', null, [
-                    React.createElement('planeGeometry', { args: [2.5, 3] }),
+                    React.createElement('planeGeometry', { args: [2, 2.5] }),
                     React.createElement('meshStandardMaterial', { color: "white" })
                 ]),
-                React.createElement('Text', { 
-                    position: [0, -1.1, 0.03], fontSize: 0.14, color: "#222", 
-                    font: "https://fonts.gstatic.com/s/playfairdisplay/v30/nuFvD7K_RW7ePaDXvK6drp8.woff" 
-                }, `Moment #${index}`)
-            ]);
-        };
-
-        const Scene = ({ state }) => {
-            return React.createElement(React.Fragment, null, [
-                React.createElement(PerspectiveCamera, { makeDefault: true, position: [0, 8, 28], fov: 40 }),
-                React.createElement(OrbitControls, { enablePan: false, autoRotate: state === STATE.FORMED }),
-                React.createElement('color', { attach: "background", args: ['#050300'] }),
-                React.createElement('Suspense', { fallback: null }, [
-                    React.createElement(Environment, { preset: "night" }),
-                    React.createElement(Float, { speed: 4 }, [
-                        React.createElement('mesh', { position: [0, 5, 0] }, [
-                            React.createElement('sphereGeometry', { args: [2.5, 32, 32] }),
-                            React.createElement(MeshWobbleMaterial, { factor: 0.5, speed: 2, color: "#FFD700", emissive: "#FF4500", emissiveIntensity: 2 })
-                        ])
-                    ]),
-                    React.createElement(CarouselElements, { state: state }),
-                    ...Array.from({ length: POLAROID_COUNT }).map((_, i) => 
-                        React.createElement(Polaroid, { key: i, index: i, total: POLAROID_COUNT, state: state })
-                    )
-                ]),
-                React.createElement('ambientLight', { intensity: 0.2 }),
-                React.createElement('spotLight', { position: [20, 40, 20], intensity: 5, color: "#FFD700" })
+                React.createElement(Text, { position: [0, -0.9, 0.02], fontSize: 0.1, color: "black" }, "MEMORIES")
             ]);
         };
 
         function App() {
             const [appState, setAppState] = useState(STATE.FORMED);
+            useEffect(() => {
+                const loader = document.getElementById('loader');
+                if (loader) setTimeout(() => loader.style.opacity = '0', 1000);
+                if (loader) setTimeout(() => loader.style.display = 'none', 1500);
+            }, []);
+
             return React.createElement('div', { className: "w-full h-screen" }, [
-                React.createElement('div', { className: "absolute top-12 w-full z-10 text-center pointer-events-none" }, [
-                    React.createElement('h1', { className: "text-6xl font-serif text-yellow-500 italic" }, "Grand Carousel")
+                React.createElement(Canvas, { shadows: true, camera: { position: [0, 5, 25], fov: 45 }, key: 'c' }, [
+                    React.createElement(Suspense, { fallback: null }, [
+                        React.createElement(Environment, { preset: "city" }),
+                        React.createElement(Float, null, React.createElement('mesh', null, [
+                            React.createElement('sphereGeometry', { args: [2, 32, 32] }),
+                            React.createElement(MeshWobbleMaterial, { factor: 0.5, speed: 2, color: "#FFD700", emissive: "#FF4500" })
+                        ])),
+                        React.createElement(CarouselElements, { state: appState }),
+                        ...Array.from({ length: POLAROID_COUNT }).map((_, i) => 
+                            React.createElement(Polaroid, { key: i, index: i, total: POLAROID_COUNT, state: appState })
+                        ),
+                        React.createElement(OrbitControls, { enablePan: false })
+                    ]),
+                    React.createElement('ambientLight', { intensity: 0.5 }),
+                    React.createElement('pointLight', { position: [10, 10, 10], intensity: 1 })
                 ]),
-                React.createElement(Canvas, { shadows: true }, React.createElement(Scene, { state: appState })),
-                React.createElement(GestureController, { onStateChange: setAppState, currentState: appState })
+                React.createElement(GestureController, { onStateChange: setAppState, currentState: appState }),
+                React.createElement('div', { className: "absolute top-10 w-full text-center pointer-events-none" }, 
+                    React.createElement('h1', { className: "text-4xl text-yellow-500 tracking-widest font-serif" }, "GRAND CAROUSEL")
+                )
             ]);
         }
 
-        const root = createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
+        createRoot(document.getElementById('root')).render(React.createElement(App));
     </script>
 </body>
 </html>
